@@ -1,0 +1,18 @@
+Per selezionare un posto inviali nella forma seguente "A1,C6,E2"
+Altrimenti invia q per tornare indietro
+
+Tratta: JFK -> FCO
+
+ABC DEF 
+*** *** 1
+x** *** 2
+*** *** 3
+*** *** 4
+*** *** 5
+*** *** 6
+*** *** 7
+*** **x 8
+
+x=posto occupato        *=posto libero
+
+Una volta inserito l'input, aspettare che la prenotazione venga elaborata
