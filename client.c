@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
-
+#include <semaphore.h>
 
 int main(int argc, char* argv[]){
     int ret;
@@ -13,7 +13,7 @@ int main(int argc, char* argv[]){
     int socket_desc;
     struct sockaddr_in server_addr = {0};
 
-    socket_desc = socket(AF_INET , SOCK_STREAM , 0);
+    socket_desc = socket(AF_INET , SOCK_STREAM , 0); 
     if( socket_desc < 0 ){
         //handle error 
     }
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]){
     if(ret < 0){
         //handleerror
     }
-    char quit_comm[]="quit";
+    char* quit_comm = QUIT_COMM;
     size_t lun_q = strlen(quit_comm);
     
 
@@ -64,8 +64,14 @@ int main(int argc, char* argv[]){
         //printf("input arrivato: %s\n",input);
         size_t in_len = strlen(input);
 
-        if( !memcmp(input , quit_comm, lun_q) ){
+        if( !memcmp(input , quit_comm , lun_q) ){
             //manda prima il segnale al server
+            int bytes_sent = 0 ;
+            while ( (ret = send(socket_desc, input + bytes_sent, in_len, 0)) < 0) {
+                bytes_sent += ret ;
+            }
+            
+            //termina
             break;
         }
      
