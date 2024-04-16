@@ -5,9 +5,77 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>  
+#include <semaphore.h>
+#include <pthread.h>
+#include <errno.h>
+
+int verifica_posti(char* lista_posti, char* cont_file);
+void manda_mess(int client_desc , char mess[]);
+void* connection_handler(void* arg /*client_desc*/);
+int calcola_pos(char* posto);
 
 //enum per distinguere in che stato del menu ci troviamo
-enum stati_menu { menu , tratte , postidisp , codicelim };
+enum stati_menu { menu , tratte , postidisp , codicelim , codiceprenot};
+
+//funzione per calcolare posizione nell'array dei posti
+int calcola_pos(char* posto){
+    
+    char lettera = posto[0];
+    char* prova = &posto[1];
+    int riga = atoi( prova ); 
+    int val_lett;
+    /*
+    mod_str[135]='x'; 
+    posizione iniziale della matrice 135
+    prossima riga  +10
+    formula -> valore lettera + 135 +10*(livello - 1)
+    */
+    switch(lettera){
+        case 'A':
+            val_lett=0;
+            break;
+        case 'B':
+            val_lett=1;
+            break;
+        case 'C':
+            val_lett=2;
+            break;
+        case 'D':
+            val_lett=4;
+            break;
+        case 'E':
+            val_lett=5;
+            break;
+        case 'F':
+            val_lett=6;
+            break;
+        default:
+            break;
+    }
+
+    int pos = val_lett + 135 + 10 * (riga - 1);
+    return pos;
+}
+
+//funzione verifica che i posti siano liberi    DA FINIRE
+int verifica_posti(char* lista_posti, char* cont_file){
+
+    const char splitter[] = ",";
+    char *token = strtok(lista_posti , splitter);
+    int num_posto;
+
+    while(token != NULL){
+        printf("%s",token);
+        num_posto = calcola_pos(token);
+        if(cont_file[num_posto] == 'x'){
+            return 0;
+        }
+
+        token = strtok(NULL , splitter);
+    }
+
+    return 1;
+}
 
 //input = descrittore del client e messaggio da inviare
 void manda_mess(int client_desc , char mess[]){
@@ -21,27 +89,35 @@ void manda_mess(int client_desc , char mess[]){
     }
 }
 
-void connection_handler(int client_desc){
+void* connection_handler(void* arg /*client_desc*/){
+    char* open_file;
     int ret;
     int comm; //comandi per navigazione menu
     char sen[400]; //usato per inviare messaggi
     enum stati_menu stato = menu; //stato iniziale = menu
+    int* client_desc_pt = (int*)arg;
+    int client_desc = *client_desc_pt;
 
     printf("server connesso a client: %d\n",client_desc);
 
     int byte_ric, sent_bytes; //variabili per send e recv
 
-    char quit_comm[]="quit";      //comando quit e lunghezza
+    //comando per finire comunicazione da common.h
+    char* quit_comm = QUIT_COMM;
     size_t lun_q = strlen(quit_comm);
+
+    FILE *f;
 
     //PER ORA stringhe da inviare al client
     char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) CDG -> JFK\nInvia il numero della tratta interessata o 6 per tornare indietro";
     char comando2[] = "Inserisci il codice della prenotazione oppure 'q' per tornare indietro";
     char comando3[] = "Carattere errato, riprova per favore";
     char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione.";
-    char comando5[] = "Per selezionare un posto inviali nella forma seguente 'A1,C6,E2'\nAltrimenti invia q per tornare indietro\n\nABC DEF\n*** *** 1\n*** *** 2\n*** *** 3\n*** *** 4\n*** *** 5\n*** *** 6\n*** *** 7\n*** *** 8\n";
+    char comando5[] = "Prenotazione effettuata! \nPremi 1 per tornare al menu iniziale";
+    char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi";
     char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione.";
     char comandoq[] = "q";
+    //char occupato[] = "x";
 
     size_t msg_len = strlen(send_buf); //mandiamo il messaggio di benvenuto
  
@@ -62,15 +138,19 @@ void connection_handler(int client_desc){
 
         //usiamo un while per assicurarci che siano stati mandati tutti i byte
         while( (byte_ric = recv(client_desc , buf_ric + bytes_red , len_buf - 1, 0)) < 0){
-            //gestisci errori
+            if( byte_ric == -1 && errno == EINTR) continue;
+            if (ret == -1){
+                perror("errore lettura nel client.\n");
+                exit(EXIT_FAILURE);
+            } 
             bytes_red += byte_ric;
         }
 
-        printf("ho ricevuto: %s\n",buf_ric);
+        printf("Dal client %d ho ricevuto: %s\n",client_desc , buf_ric);
 
         //condizione per chiudere la comunicazione, per ora solo 1 messaggio
         if( !memcmp(quit_comm, buf_ric , lun_q)){
-            printf("comunicazione finita");
+            printf("comunicazione finita con client: %d\n",client_desc);
             break;
         }
 
@@ -107,21 +187,125 @@ void connection_handler(int client_desc){
                 comm = atoi(buf_ric);
                 
                 if(comm == 1){
-                    memcpy(sen , comando5 , strlen(comando5));
+                    
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_uno.txt" , "r"))==NULL){
+                        //errore
+                    }
+
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
+                    open_file = "posti_uno.txt";
                     stato = postidisp;
                 }
                 else if (comm == 2){
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_due.txt" , "r"))==NULL){
+                        //errore
+                    }
 
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_due.txt";
+                    stato = postidisp;
                 }
                 else if (comm == 3){
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_tre.txt" , "r"))==NULL){
+                        //errore
+                    }
 
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_tre.txt";
+                    stato = postidisp;
                 }
                 else if (comm == 4){
+                   //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_quattro.txt" , "r"))==NULL){
+                        //errore
+                    }
 
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                   
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_quattro.txt";
+                    stato = postidisp;
                 }
                 else if (comm == 5){
+                   //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_cinque.txt" , "r"))==NULL){
+                        //errore
+                    }
 
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_cinque.txt";
+                    stato = postidisp;
                 }
                 else if (comm == 6){
                     memcpy(sen, comando4 , strlen(comando4));
@@ -138,16 +322,64 @@ void connection_handler(int client_desc){
             case postidisp:
                 
                 if( !memcmp( comandoq , buf_ric , sizeof(comandoq)) ){
+                    
                     memcpy(sen, comando1 , strlen(comando1));
                     manda_mess(client_desc , sen);
                     stato = tratte;
+                }
+                else if(1==1){  //capire che condizione mettere (probabilmente controlla prima l'input e usa quello)
+
+                    int pos = calcola_pos(buf_ric);//val_lett + 135 + 10 * (riga - 1);
+                    printf("valore posizione: %d\n",pos);
+
+                     if((f = fopen( open_file , "r+"))==NULL){
+                        //errore
+                    }
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET); 
+                    //leggiamo tutto e mettiamolo su mod_str
+                    char *mod_str = malloc(fsize + 1);
+                    fread(mod_str , fsize , 1 , f);
+                    //int ver = verifica_posti(buf_ric , mod_str);
+
+                    if( mod_str[pos] == 'x'){
+                        memcpy(sen, comando6 , strlen(comando6));
+                        manda_mess(client_desc , sen);
+                    }
+                    else{
+                        mod_str[pos]='x';
+                        printf("%s",mod_str);
+                        //scriviamo su file 
+                        fseek(f , 0 , SEEK_SET);
+                        fprintf(f , "%s" ,mod_str);
+
+                        memcpy(sen, comando5 , strlen(comando5));
+                        manda_mess(client_desc , sen);
+                        stato = codiceprenot;
+                    }
+                    fclose(f);
+                
                 }
                 else{
                     memcpy(sen, comando3 , strlen(comando3));
                     manda_mess(client_desc , sen);    
                 }
                 break;
-            
+
+            case codiceprenot:
+                if(atoi(buf_ric) == 1){
+                    memcpy(sen, comando4 , strlen(comando4));
+                    manda_mess(client_desc , sen);
+                    stato = menu;
+                }
+                else{
+                    memcpy(sen, comando5 , strlen(comando5));
+                    manda_mess(client_desc , sen);    
+                }
+                break;
+
             case codicelim:
                 
                 if(!memcmp( comandoq , buf_ric , sizeof(comandoq))){
@@ -166,7 +398,7 @@ void connection_handler(int client_desc){
                 break;
         }
     }
-    return;
+    
 }
 
 int main(int argc, char* argv[]){
@@ -176,7 +408,8 @@ int main(int argc, char* argv[]){
 
     //definiamo i descrittori, le struct per indirizzi, la size della struct
     int socket_desc,client_desc;
-    struct sockaddr_in client_addr = {0};   // alcuni valori devono essere settati a 0
+  
+    // alcuni valori devono essere settati a 0
     struct sockaddr_in server_addr = {0};
     int sockaddr_len = sizeof(struct sockaddr_in); 
 
@@ -203,12 +436,36 @@ int main(int argc, char* argv[]){
 
     while(1){ //cambia questa parte per multi thread
         
+
+        //setup per i thread 
+        pthread_t thread;
+
+        //allochiamo a ogni ciclo una nuova struttura 
+        struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
+
         //accettiamo connessioni
         client_desc = accept(socket_desc , (struct sockaddr*) &client_addr , (socklen_t*)&sockaddr_len );
         if (client_desc < 0){
             //handle error
         }
 
-        connection_handler(client_desc);
+        //per passarlo a pthread_create
+        int* client_desc_pt = calloc( 1 , sizeof(int) );
+        *client_desc_pt = client_desc;
+
+
+        ret = pthread_create(&thread , NULL , connection_handler , client_desc_pt);
+        if(ret){
+            //gestisci errore
+        }
+
+        ret = pthread_detach(thread);
+        if(ret){
+            //gestisci errore 
+        }
+
+        //connection_handler(client_desc_pt);
     }
+
+    return 0;
 }
