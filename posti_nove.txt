@@ -1,7 +1,7 @@
 Per selezionare un posto inviali nella forma seguente "A1,C6,E2"
 Altrimenti invia q per tornare indietro
 
-Tratta: FCO -> JFK
+Tratta: VIE -> BCN
 
 ABC DEF 
 *** *** 1

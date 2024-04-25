@@ -61,11 +61,12 @@ int calcola_pos(char* posto){
 int verifica_posti(char* lista_posti, char* cont_file){
 
     const char splitter[] = ",";
-    char *token = strtok(lista_posti , splitter);
+    char *token;
+    token = strtok(lista_posti , splitter);
     int num_posto;
 
     while(token != NULL){
-        printf("%s",token);
+        printf("stringa tokenizzata %s\n",token);
         num_posto = calcola_pos(token);
         if(cont_file[num_posto] == 'x'){
             return 0;
@@ -109,13 +110,13 @@ void* connection_handler(void* arg /*client_desc*/){
     FILE *f;
 
     //PER ORA stringhe da inviare al client
-    char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) CDG -> JFK\nInvia il numero della tratta interessata o 6 per tornare indietro";
+    char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) AMS -> BER\n6) BER -> AMS\n7) LHR -> ZRH\n8) ZRH -> LHR\n9) VIE -> BCN\n10) BCN -> VIE\n11) torna indietro\nInvia il numero della tratta interessata o 11 per tornare indietro";
     char comando2[] = "Inserisci il codice della prenotazione oppure 'q' per tornare indietro";
-    char comando3[] = "Carattere errato, riprova per favore";
-    char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione.";
+    char comando3[] = "input errato, riprova per favore";
+    char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
     char comando5[] = "Prenotazione effettuata! \nPremi 1 per tornare al menu iniziale";
     char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi";
-    char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione.";
+    char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
     char comandoq[] = "q";
     //char occupato[] = "x";
 
@@ -164,14 +165,14 @@ void* connection_handler(void* arg /*client_desc*/){
         //switch su stati
         switch (stato){
             case menu:
-                comm = atoi(buf_ric);
+                //comm = atoi(buf_ric);
 
-                if(comm==1){
+                if(atoi(buf_ric)==1){
                     memcpy(sen , comando1 , strlen(comando1));
                     manda_mess(client_desc , sen);
                     stato = tratte;
                 }
-                else if(comm==2){
+                else if(atoi(buf_ric)==2){
                     memcpy(sen, comando2 , strlen(comando2)); 
                     manda_mess(client_desc , sen);
                     stato = codicelim;
@@ -308,6 +309,126 @@ void* connection_handler(void* arg /*client_desc*/){
                     stato = postidisp;
                 }
                 else if (comm == 6){
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_sei.txt" , "r"))==NULL){
+                        //errore
+                    }
+
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_sei.txt";
+                    stato = postidisp;
+                }       
+                else if (comm == 7){
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_sette.txt" , "r"))==NULL){
+                        //errore
+                    }
+
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_sette.txt";
+                    stato = postidisp;
+                }
+                else if (comm == 8){
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_otto.txt" , "r"))==NULL){
+                        //errore
+                    }
+
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_otto.txt";
+                    stato = postidisp;
+                }
+                else if (comm == 9){
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_nove.txt" , "r"))==NULL){
+                        //errore
+                    }
+
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_nove.txt";
+                    stato = postidisp;
+                }
+                else if (comm == 10){
+                    //apro il file contenente dati della tratta 1
+                    if((f = fopen( "posti_dieci.txt" , "r"))==NULL){
+                        //errore
+                    }
+
+                    //calcolo lunghezza file
+                    fseek(f , 0 , SEEK_END);
+                    long fsize = ftell(f);
+                    fseek(f,0,SEEK_SET);
+
+                    //leggiamo tutto e mettiamolo su send_str
+                    char *send_str = malloc(fsize + 1);
+                    fread(send_str , fsize , 1 , f);
+                    fclose(f);
+                    
+                    send_str[fsize] = 0;
+                    
+                    printf("%s",send_str);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    open_file = "posti_dieci.txt";
+                    stato = postidisp;
+                }        
+                else if (comm == 11){
                     memcpy(sen, comando4 , strlen(comando4));
                     manda_mess(client_desc , sen);
                     stato = menu;
@@ -329,9 +450,6 @@ void* connection_handler(void* arg /*client_desc*/){
                 }
                 else if(1==1){  //capire che condizione mettere (probabilmente controlla prima l'input e usa quello)
 
-                    int pos = calcola_pos(buf_ric);//val_lett + 135 + 10 * (riga - 1);
-                    printf("valore posizione: %d\n",pos);
-
                      if((f = fopen( open_file , "r+"))==NULL){
                         //errore
                     }
@@ -342,14 +460,32 @@ void* connection_handler(void* arg /*client_desc*/){
                     //leggiamo tutto e mettiamolo su mod_str
                     char *mod_str = malloc(fsize + 1);
                     fread(mod_str , fsize , 1 , f);
-                    //int ver = verifica_posti(buf_ric , mod_str);
-
-                    if( mod_str[pos] == 'x'){
+                    char copia_buf[400];
+                    memcpy(copia_buf , buf_ric , sizeof(buf_ric));
+                    int ver = verifica_posti( copia_buf , mod_str );
+                    
+                  /*int pos = calcola_pos(buf_ric);//val_lett + 135 + 10 * (riga - 1);
+                    printf("valore posizione: %d\n",pos);*/
+                    printf("debug: verifica: %d\n",ver);
+                    if( ver==0/*mod_str[pos] == 'x'*/){
                         memcpy(sen, comando6 , strlen(comando6));
                         manda_mess(client_desc , sen);
                     }
                     else{
-                        mod_str[pos]='x';
+                        
+                        const char splitter[] = ",";
+                        char *token;
+                        printf("ricevuto: %s\n",buf_ric);
+                        token = strtok(buf_ric , splitter);
+                        int num_posto;
+
+                        while(token != NULL){   
+                            printf("posto da prenotare: %s\n",token);
+                            num_posto = calcola_pos(token);
+                            mod_str[num_posto]='x';
+
+                            token = strtok(NULL , splitter);
+                        }
                         printf("%s",mod_str);
                         //scriviamo su file 
                         fseek(f , 0 , SEEK_SET);

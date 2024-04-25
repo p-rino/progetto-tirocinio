@@ -45,10 +45,11 @@ int main(int argc, char* argv[]){
         while ( (recv_bytes = recv(socket_desc, recv_buf + bytes_recv , buf_len - 1 , 0)) < 0 ) {
             bytes_recv += recv_bytes;
         }
+        
         size_t lunghezza = bytes_recv -1 ;
         //recv_buf[lunghezza]='\0';
         printf("---------------------------------------------------------------\n\n");
-        printf("%s",recv_buf);
+        printf("%s",recv_buf); 
         printf("\n");
         printf("\n");
         printf("---------------------------------------------------------------\n");
