@@ -5,13 +5,13 @@ Tratta: JFK -> FCO
 
 ABC DEF 
 *** *** 1
-x** *** 2
+*** *** 2
 *** *** 3
 *** *** 4
 *** *** 5
 *** *** 6
 *** *** 7
-*** **x 8
+*** *** 8
 
 x=posto occupato        *=posto libero
 

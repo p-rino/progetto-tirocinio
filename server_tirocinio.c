@@ -13,9 +13,77 @@ int verifica_posti(char* lista_posti, char* cont_file);
 void manda_mess(int client_desc , char mess[]);
 void* connection_handler(void* arg /*client_desc*/);
 int calcola_pos(char* posto);
-
+int get_num_prenotazione(char num);
+void aum_cod_pren(char num);
 //enum per distinguere in che stato del menu ci troviamo
 enum stati_menu { menu , tratte , postidisp , codicelim , codiceprenot};
+
+//funzione per aumentare nel file il codice
+void aum_cod_pren(char num){
+    int tratta;
+    char num_letto[10];
+    char da_sovrascrivere[100]="";
+    char snum[10];
+    int i=1;
+    //apriamo il file e leggiamo la riga giusta
+    FILE *t;
+    if((t = fopen( "numeri_prenotazione.txt" , "r+"))==NULL){
+        //errore
+    }
+    
+    if(num=='A'){tratta=10;}
+    else{tratta=num - '0';}
+
+
+    while(fgets(num_letto, 10, t)){
+        //leggiamo le righe fino a che non troviamo la riga giusta
+        
+        if(i==tratta){
+            //aumenta numero tratta
+            int num_da_scrivere = atoi(num_letto);
+            num_da_scrivere++;
+            sprintf(snum ,"%d\n" , num_da_scrivere );
+            strcat(da_sovrascrivere , snum);
+        }
+        else{
+            strcat(da_sovrascrivere , num_letto);
+        }
+        i++;
+    }
+    //printf("num codici\n%s" , da_sovrascrivere);
+    fseek(t , 0 , SEEK_SET);
+    fprintf(t , "%s" ,da_sovrascrivere);
+    fclose(t);
+}
+
+
+//funzione per prendere da file il prossimo numero prenotazione
+int get_num_prenotazione(char num){
+    int tratta;
+    char num_letto[10];
+    int i=1;
+    //apriamo il file e leggiamo la riga giusta
+    FILE *f;
+    if((f = fopen( "numeri_prenotazione.txt" , "r+"))==NULL){
+        //errore
+    }
+    
+    if(num=='A'){
+        tratta=10;
+    }
+    else{
+        tratta=num - '0';
+    }
+
+    while(fgets(num_letto, 10, f)){
+        //leggiamo le righe fino a che non troviamo la riga giusta
+        
+        if(i==tratta){
+            return atoi(num_letto);
+        }
+        i++;
+    }
+}
 
 //funzione per calcolare posizione nell'array dei posti
 int calcola_pos(char* posto){
@@ -66,7 +134,7 @@ int verifica_posti(char* lista_posti, char* cont_file){
     int num_posto;
 
     while(token != NULL){
-        printf("stringa tokenizzata %s\n",token);
+        //printf("stringa tokenizzata %s\n",token);
         num_posto = calcola_pos(token);
         if(cont_file[num_posto] == 'x'){
             return 0;
@@ -98,6 +166,8 @@ void* connection_handler(void* arg /*client_desc*/){
     enum stati_menu stato = menu; //stato iniziale = menu
     int* client_desc_pt = (int*)arg;
     int client_desc = *client_desc_pt;
+    char num_tratta;
+    int num_prenotazione;
 
     printf("server connesso a client: %d\n",client_desc);
 
@@ -108,13 +178,15 @@ void* connection_handler(void* arg /*client_desc*/){
     size_t lun_q = strlen(quit_comm);
 
     FILE *f;
+    FILE *g;
 
     //PER ORA stringhe da inviare al client
     char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) AMS -> BER\n6) BER -> AMS\n7) LHR -> ZRH\n8) ZRH -> LHR\n9) VIE -> BCN\n10) BCN -> VIE\n11) torna indietro\nInvia il numero della tratta interessata o 11 per tornare indietro";
     char comando2[] = "Inserisci il codice della prenotazione oppure 'q' per tornare indietro";
     char comando3[] = "input errato, riprova per favore";
     char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
-    char comando5[] = "Prenotazione effettuata! \nPremi 1 per tornare al menu iniziale";
+    char comando5[] = "Prenotazione effettuata!\nIl tuo codice prenotazione è: ";
+    char comando5bis[] = "\nPremi 1 per tornare indietro";
     char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi";
     char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
     char comandoq[] = "q";
@@ -207,6 +279,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='1';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_uno.txt";
@@ -231,6 +304,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='2';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_due.txt";
@@ -255,6 +329,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='3';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_tre.txt";
@@ -279,6 +354,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                    
                     printf("%s",send_str);
+                    num_tratta='4';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_quattro.txt";
@@ -303,6 +379,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='5';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_cinque.txt";
@@ -327,6 +404,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='6';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_sei.txt";
@@ -351,6 +429,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='7';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_sette.txt";
@@ -375,6 +454,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='8';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_otto.txt";
@@ -399,6 +479,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='9';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_nove.txt";
@@ -423,6 +504,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     send_str[fsize] = 0;
                     
                     printf("%s",send_str);
+                    num_tratta='A';
                     memcpy(sen , send_str , strlen(send_str));
                     manda_mess(client_desc , sen);
                     open_file = "posti_dieci.txt";
@@ -457,6 +539,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     fseek(f , 0 , SEEK_END);
                     long fsize = ftell(f);
                     fseek(f,0,SEEK_SET); 
+
                     //leggiamo tutto e mettiamolo su mod_str
                     char *mod_str = malloc(fsize + 1);
                     fread(mod_str , fsize , 1 , f);
@@ -464,33 +547,62 @@ void* connection_handler(void* arg /*client_desc*/){
                     memcpy(copia_buf , buf_ric , sizeof(buf_ric));
                     int ver = verifica_posti( copia_buf , mod_str );
                     
-                  /*int pos = calcola_pos(buf_ric);//val_lett + 135 + 10 * (riga - 1);
-                    printf("valore posizione: %d\n",pos);*/
-                    printf("debug: verifica: %d\n",ver);
-                    if( ver==0/*mod_str[pos] == 'x'*/){
+                    //printf("debug: verifica: %d\n",ver);
+                    if( ver==0 ){
                         memcpy(sen, comando6 , strlen(comando6));
                         manda_mess(client_desc , sen);
                     }
                     else{
                         
+                        //generiamo codice prenotazione
+                        int i=0;
+                        char snum_prenotazione[10];
+                        aum_cod_pren(num_tratta);
+                        num_prenotazione = get_num_prenotazione(num_tratta);
+                        char codice_prenotazione[100];
+                        codice_prenotazione[i]=num_tratta;
+                        i++;
+                        sprintf(snum_prenotazione ,"%d" , num_prenotazione );
+                        for (int j=0 ; j<strlen(snum_prenotazione) ; j++ ){
+                            codice_prenotazione[i] = snum_prenotazione[j];
+                            i++;
+                        }
+                        codice_prenotazione[i]=':';
+                        i++;
+                        for ( int j=0 ; j < strlen(buf_ric) ; j++ ){
+                            codice_prenotazione[i] = buf_ric[j];
+                            i++;
+                        }
+                        codice_prenotazione[i]='\0';
+                        printf("codice prenotazione generato: %s\n",codice_prenotazione);
+                        
+                        //scriviamo codice prenotazione sul file 
+                        g=fopen( "codici_prenotazione.txt" , "r+");
+                        fseek(g ,  0, SEEK_END);
+                        fprintf(g , "%s\n" , codice_prenotazione);
+                        fclose(g);
+
+                        //tokenizziamo il buf_ric per prenotaare tutti i posti 
                         const char splitter[] = ",";
                         char *token;
-                        printf("ricevuto: %s\n",buf_ric);
+                        //printf("ricevuto: %s\n",buf_ric);
                         token = strtok(buf_ric , splitter);
                         int num_posto;
 
                         while(token != NULL){   
-                            printf("posto da prenotare: %s\n",token);
+                            //printf("posto da prenotare: %s\n",token);
                             num_posto = calcola_pos(token);
                             mod_str[num_posto]='x';
 
                             token = strtok(NULL , splitter);
                         }
-                        printf("%s",mod_str);
+
+                        //printf("%s",mod_str);
                         //scriviamo su file 
                         fseek(f , 0 , SEEK_SET);
                         fprintf(f , "%s" ,mod_str);
-
+                        strcat(comando5,codice_prenotazione);
+                        strcat(comando5,comando5bis);
                         memcpy(sen, comando5 , strlen(comando5));
                         manda_mess(client_desc , sen);
                         stato = codiceprenot;
@@ -528,7 +640,6 @@ void* connection_handler(void* arg /*client_desc*/){
                     manda_mess(client_desc , sen);    
                 }
                 break;
-            
             
             default:
                 break;
