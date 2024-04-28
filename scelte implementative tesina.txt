@@ -1,0 +1,57 @@
+Realizzazione di un sistema di prenotazione posti per una compagnia aerea.
+
+Un processo su una macchina server gestisce una mappa di posti per ogni tratta di una compagnia aerea. Ciascun posto e' caratterizzato da un numero di fila, un numero di poltrona ed un campo indicante se il posto e' gia' stato prenotato o meno. Il server accetta e processa le richieste di prenotazione di posti da uno o piu' client (residenti su macchine diverse). 
+
+Un client deve fornire ad un utente le seguenti funzioni:
+1. Visualizzare l'elenco delle tratte disponibili.
+2. Visualizzare la mappa dei posti, selezionata una tratta, in modo da individuare quelli ancora disponibili.
+3. Inviare al server l'elenco dei posti che si intende prenotare (ciascun posto da prenotare viene ancora identificato tramite numero di fila e numero di poltrona).
+4. Attendere dal server la conferma di effettuata prenotazione attraverso un codice di prenotazione.
+5. Disdire una prenotazione per cui si possiede un codice. 
+
+Realizzare sia il client che il server.
+
+Esempio:
+1) FCO -> JFK
+2) JFK -> FCO
+3) CDG -> FCO
+4) FCO -> CDG
+5) AMS -> BER
+6) BER -> AMS
+7) LHR -> ZRH
+8) ZRH -> LHR
+9) VIE -> BCN
+10) BCN -> VIE
+
+GUI CLIENT:
+1) Premi 1 per accedere alla lista delle tratte. --> implementa steps 1,2,3,4 di cui sopra.
+2) Premi 2 per cancellare una prenotazione. -> implementa steps 5 di cui sopra
+3) Esci: premi 'quit' per uscire.
+
+COME INVIARE I POSTI LATO CLIENT: 
+- come posti indice colonna separati da virgola. Esempio: "A1,C6,E2".
+
+COME GESTIRE I POSTI LATO SERVER: 
+- il server splitta per "," e parsa i posti. I posti devono inizialmente risiedere su files. Quindi il server avrà 10 files, una mappa dei posti per tratta. '*' significa posto vuoto, 'x' posto occupato.
+
+- il codice prenotazione è unico per lista di posti prenotati, come nel caso reale.
+
+- mantenere anche un file per tratta con i codici prenotati, quindi 10 files. Il contenuto del file sarà una lista di coppie <K,V>: <codice_prenotazione,lista_posti> nel caso in cui il client invia una lista di posti, <codice_prenotazione,posto> altrimenti.
+
+mantenere un unico file TXT per le prenotazioni. Ogni riga del file sarà così formattata: codice prenotazione XY dove X è il numero di tratta ed Y un intero progressivo univoco per la tratta, separato da due punti e poi la lista di posti prenotati. Quindi un esempio di entry sarà:
+A1:A1,C6,E2
+10-ima tratta, prenotazione #1
+
+OSSERVAZIONE: ci deve essere allineamento tra il file delle prenotazioni ed i files delle mappe dei posti.
+
+2 MODI DI OPERARE:
+1) AD OGNI PRENOTAZIONE AGGIORNO I FILES <<<-------------- Noi abbiamo adottato per questa.
+2) AGGIORNO I FILES QUANDO IL SERVER MUORE.
+
+COME GESTIRE I POSTI LATO CLIENT:
+- anche il client dovrà mantenere un file con le prenotazioni delle varie tratte, in maniera analoga del server.
+- il formato è lo stesso del server, vedi esempio sopra
+- sia client che server dovranno aggiornare i loro files interni in maniera atomica.
+
+COME DISDIRE UN POSTO:
+- al server va inviata la coppia <codice prenotazione,posto>
