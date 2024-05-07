@@ -54,7 +54,7 @@ int main(int argc, char* argv[]){
         printf("\n");
         printf("---------------------------------------------------------------\n");
 
-        
+         
         //manda risposta
         char input[20];
         memset(input , 0 , strlen(input));
@@ -62,7 +62,6 @@ int main(int argc, char* argv[]){
         printf("inserisci un input: ");
         scanf( "%s" , input);
         //gets(input);
-        //printf("input arrivato: %s\n",input);
         size_t in_len = strlen(input);
 
         if( !memcmp(input , quit_comm , lun_q) ){

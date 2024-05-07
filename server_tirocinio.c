@@ -11,9 +11,22 @@
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
+//PER ORA stringhe da inviare al client
+const char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) AMS -> BER\n6) BER -> AMS\n7) LHR -> ZRH\n8) ZRH -> LHR\n9) VIE -> BCN\n10) BCN -> VIE\n11) torna indietro\nInvia il numero della tratta interessata o 11 per tornare indietro";
+const char comando2[] = "Inserisci il codice della prenotazione oppure 'q' per tornare indietro";
+const char comando3[] = "input errato, riprova per favore";
+const char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
+char comando5[] = "Prenotazione effettuata!\nIl tuo codice prenotazione è: ";
+const char comando5bis[] = "\nPremi 1 per tornare indietro";
+const char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi";
+const char comando7[] = "Prenotazione cancellata!\nPremi 1 per tornare al menù principale";
+const char comando8[] = "Codice prenotazione non trovato!\nRiprova oppure premi q per tornare indietro.";
+const char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
+const char comandoq[] = "q";
+
 int verifica_posti(char* lista_posti, char* cont_file);
 void manda_mess(int client_desc , char mess[]);
-void* connection_handler(void* arg /*client_desc*/);
+void* connection_handler(void* arg);
 int calcola_pos(char* posto);
 int get_num_prenotazione(char num);
 void aum_cod_pren(char num);
@@ -26,6 +39,7 @@ void eliminaprenotati(char prenotazione[]){
     char file = prenotazione[0];
     char posto[2];
     FILE* h;
+    char buf[30];
     //printf("carattere: %c",file);
     switch(file){
         case '1':
@@ -264,6 +278,7 @@ void manda_mess(int client_desc , char mess[]){
     }
 }
 
+//funzione che gestisce connessione/invio
 void* connection_handler(void* arg /*client_desc*/){
     char* open_file;
     int ret;
@@ -286,18 +301,7 @@ void* connection_handler(void* arg /*client_desc*/){
     FILE *f;
     FILE *g;
 
-    //PER ORA stringhe da inviare al client
-    char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) AMS -> BER\n6) BER -> AMS\n7) LHR -> ZRH\n8) ZRH -> LHR\n9) VIE -> BCN\n10) BCN -> VIE\n11) torna indietro\nInvia il numero della tratta interessata o 11 per tornare indietro";
-    char comando2[] = "Inserisci il codice della prenotazione oppure 'q' per tornare indietro";
-    char comando3[] = "input errato, riprova per favore";
-    char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
-    char comando5[] = "Prenotazione effettuata!\nIl tuo codice prenotazione è: ";
-    char comando5bis[] = "\nPremi 1 per tornare indietro";
-    char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi";
-    char comando7[] = "Prenotazione cancellata!\nPremi 1 per tornare al menù principale";
-    char comando8[] = "Codice prenotazione non trovato!\nRiprova oppure premi q per tornare indietro.";
-    char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
-    char comandoq[] = "q";
+ 
     //char occupato[] = "x";
 
     size_t msg_len = strlen(send_buf); //mandiamo il messaggio di benvenuto
@@ -320,7 +324,8 @@ void* connection_handler(void* arg /*client_desc*/){
         //usiamo un while per assicurarci che siano stati mandati tutti i byte
         while( (byte_ric = recv(client_desc , buf_ric + bytes_red , len_buf - 1, 0)) < 0){
             if( byte_ric == -1 && errno == EINTR) continue;
-            if (ret == -1){
+            if (byte_ric == -1){
+
                 perror("errore lettura nel client.\n");
                 exit(EXIT_FAILURE);
             } 
@@ -766,7 +771,7 @@ void* connection_handler(void* arg /*client_desc*/){
                             }
                             //printf("comparato b: %c , l: %c \n",buf_ric[i],letto[i]);
                         }
-                        //printf("buf: %s\nlet: %s",buf_ric,letto);
+                        
                         if(!pro){
                             strcat(nuovo , letto);
                         }
@@ -822,6 +827,7 @@ void* connection_handler(void* arg /*client_desc*/){
     }
     
 }
+
 
 int main(int argc, char* argv[]){
 
