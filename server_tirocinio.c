@@ -9,21 +9,29 @@
 #include <pthread.h>
 #include <errno.h>
 
+//variabili globali
+#define NUMERO_TRATTE 10 //numero di tratte, serve anche per semafori
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
+sem_t semafori[NUMERO_TRATTE];
+sem_t sem_cod_prenotazione, sem_num_prenotazione;
 
-//PER ORA stringhe da inviare al client
+//stringhe da inviare al client
 const char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) AMS -> BER\n6) BER -> AMS\n7) LHR -> ZRH\n8) ZRH -> LHR\n9) VIE -> BCN\n10) BCN -> VIE\n11) torna indietro\nInvia il numero della tratta interessata o 11 per tornare indietro";
 const char comando2[] = "Inserisci il codice della prenotazione oppure 'q' per tornare indietro";
 const char comando3[] = "input errato, riprova per favore";
 const char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
-char comando5[] = "Prenotazione effettuata!\nIl tuo codice prenotazione è: ";
+const char comando5uno[] = "Prenotazione effettuata!\nIl tuo codice prenotazione è: ";
 const char comando5bis[] = "\nPremi 1 per tornare indietro";
 const char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi";
 const char comando7[] = "Prenotazione cancellata!\nPremi 1 per tornare al menù principale";
 const char comando8[] = "Codice prenotazione non trovato!\nRiprova oppure premi q per tornare indietro.";
 const char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
 const char comandoq[] = "q";
+const char file1[] = "posti_";
+const char file2[] = ".txt";
 
+//funzioni
+int verifica_formato(char* lista_posti);
 int verifica_posti(char* lista_posti, char* cont_file);
 void manda_mess(int client_desc , char mess[]);
 void* connection_handler(void* arg);
@@ -31,78 +39,87 @@ int calcola_pos(char* posto);
 int get_num_prenotazione(char num);
 void aum_cod_pren(char num);
 void eliminaprenotati(char prenotazione[]);
+char* get_posti_tratta(char file_name[]);
+
+
 //enum per distinguere in che stato del menu ci troviamo
 enum stati_menu { menu , tratte , postidisp , codicelim , codiceprenot , codiceliminato};
 
+//funzione per verificare input
+int verifica_formato(char* lista_posti){
+    
+    const char splitter[] = ",";
+    char *token;
+    token = strtok(lista_posti , splitter);
+    char carattere1;
+    char* temp; 
+    while(token != NULL){
+        temp = &token[1];
+        int riga = atoi( temp );
+        carattere1=token[0];
+
+        if(strlen(token)!=2 || carattere1 > 70 || carattere1 < 65 || riga < 1 || riga  > 8 ){
+            return 0;
+        }
+ 
+        token = strtok(NULL , splitter);
+    }
+    return 1;
+}
+
+//funzione per leggere file
+char* get_posti_tratta(char file_name[]){
+    FILE* f;
+    //apro il file contenente dati della tratta 
+    if((f = fopen( file_name , "r"))==NULL){
+        //errore
+    }
+
+    //calcolo lunghezza file
+    fseek(f , 0 , SEEK_END);
+    long fsize = ftell(f);
+    fseek(f,0,SEEK_SET);
+
+    //leggiamo tutto e mettiamolo su ret_str
+    char *ret_str = malloc(fsize + 1);
+    fread(ret_str , fsize , 1 , f);
+    fclose(f);
+    
+    ret_str[fsize] = 0;
+    
+    return ret_str;
+}
+   
 //funzione per aprire file e modificare i posti prenotati
 void eliminaprenotati(char prenotazione[]){
-    char file = prenotazione[0];
+    int numero_sem;
+    char file[2];
+    file[0] = prenotazione[0];
     char posto[2];
     FILE* h;
     char buf[30];
-    //printf("carattere: %c",file);
-    switch(file){
-        case '1':
-            if((h = fopen( "posti_uno.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
+    char carattere_file = prenotazione[0];
 
-        case '2':
-            if((h = fopen( "posti_due.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case '3':
-            if((h = fopen( "posti_tre.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case '4':
-            if((h = fopen( "posti_quattro.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case '5':
-            if((h = fopen( "posti_cinque.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case '6':
-            if((h = fopen( "posti_sei.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case '7':
-            if((h = fopen( "posti_sette.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case '8':
-            if((h = fopen( "posti_otto.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case '9':
-            if((h = fopen( "posti_nove.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
-
-        case 'A':
-            if((h = fopen( "posti_dieci.txt" , "r+"))==NULL){
-                //errore
-            }
-            break;
+    if(carattere_file=='A'){
+        numero_sem=10;
     }
-    
+    else{
+        numero_sem=atoi(file);
+    }
+   
+    char* file_da_aprire=calloc(1,20*sizeof(char));
+    strcpy(file_da_aprire , file1);
+    strcat(file_da_aprire , file);   
+    strcat(file_da_aprire , file2);
+
+
+
+    if(sem_wait(&semafori[numero_sem-1])==-1){      //WAIT
+                        //errore
+    }
+    if((h = fopen( file_da_aprire, "r+"))==NULL){
+        //errore
+    }
     //calcolo lunghezza file
     fseek(h , 0 , SEEK_END);
     long fsize = ftell(h);
@@ -111,8 +128,7 @@ void eliminaprenotati(char prenotazione[]){
     //leggiamo tutto e mettiamolo su tomod_str
     char *tomod_str = malloc(fsize + 1);
     fread(tomod_str , fsize , 1 , h);
-    //printf("stringa totale:\n %s",tomod_str);
-    int numero_posto;
+    int numero_posto; 
     int i=0;
 
     //arriviamo ai posti
@@ -120,27 +136,27 @@ void eliminaprenotati(char prenotazione[]){
         i++;
     }
     i++;
-    //printf("numero i: %d\nlen prenotazione %ld\n",i,strlen(prenotazione));
+
     //rendiamo i posti disponibili
     int j=i;
-    for ( i ; i<strlen(prenotazione)-j+1 ; i+=2){
-        posto[0]=prenotazione[i];
-        posto[1]=prenotazione[i+1];
-        if(prenotazione[i+2]==','){i++;}
-        //printf("posto analizzato: %s\n",posto);
-        //printf("la i è a: %d , mentre lenpren è: %ld\n",i,strlen(prenotazione));
+    for ( int k=0; k<strlen(prenotazione)-j-1 ; k+=2){
+        posto[0]=prenotazione[k+i];
+        posto[1]=prenotazione[k+i+1];
+        if(prenotazione[i+2]==','){k++;}
         numero_posto = calcola_pos(posto);
         tomod_str[numero_posto]='*';
     }
 
-    //printf("stringa totale:\n %s",tomod_str);
     fseek(h , 0 , SEEK_SET);
     fprintf(h , "%s" ,tomod_str);
     fclose(h);
+    if(sem_post(&semafori[numero_sem-1])==-1){      //WAIT
+        //errore
+    }
 }
- 
+
 //funzione per aumentare nel file il codice
-void aum_cod_pren(char num){
+void aum_cod_pren(char num){ 
     int tratta;
     char num_letto[10];
     char da_sovrascrivere[100]="";
@@ -245,7 +261,7 @@ int calcola_pos(char* posto){
     return pos;
 }
 
-//funzione verifica che i posti siano liberi    DA FINIRE
+//funzione verifica che i posti siano liberi
 int verifica_posti(char* lista_posti, char* cont_file){
 
     const char splitter[] = ",";
@@ -254,7 +270,6 @@ int verifica_posti(char* lista_posti, char* cont_file){
     int num_posto;
 
     while(token != NULL){
-        //printf("stringa tokenizzata %s\n",token);
         num_posto = calcola_pos(token);
         if(cont_file[num_posto] == 'x'){
             return 0;
@@ -270,23 +285,27 @@ int verifica_posti(char* lista_posti, char* cont_file){
 void manda_mess(int client_desc , char mess[]){
     int ret;
     size_t msg_l = strlen(mess);
-
     int bytes_sent = 0;
     while ( (ret = send( client_desc, mess + bytes_sent, msg_l, 0 )) < 0 ){
         bytes_sent += ret;
-        //gestisci errori
+        if(ret<0){
+            pthread_exit(NULL);
+        }
     }
+
 }
 
 //funzione che gestisce connessione/invio
 void* connection_handler(void* arg /*client_desc*/){
-    char* open_file;
-    int ret;
+    char* open_file=calloc(20,sizeof(char));
+    int open_sem;
+    int ret; 
     int comm; //comandi per navigazione menu
     char sen[400]; //usato per inviare messaggi
     enum stati_menu stato = menu; //stato iniziale = menu
     int* client_desc_pt = (int*)arg;
     int client_desc = *client_desc_pt;
+    char num_tratta_str[2];
     char num_tratta;
     int num_prenotazione;
 
@@ -296,13 +315,10 @@ void* connection_handler(void* arg /*client_desc*/){
 
     //comando per finire comunicazione da common.h
     char* quit_comm = QUIT_COMM;
-    size_t lun_q = strlen(quit_comm);
 
+    size_t lun_q = strlen(quit_comm);
     FILE *f;
     FILE *g;
-
- 
-    //char occupato[] = "x";
 
     size_t msg_len = strlen(send_buf); //mandiamo il messaggio di benvenuto
  
@@ -310,7 +326,7 @@ void* connection_handler(void* arg /*client_desc*/){
         if(1){
             //error management 
         }
-    }
+    } 
 
     //riceviamo e mandiamo fino a che non riceviamo comando quit
     while (1){
@@ -326,13 +342,11 @@ void* connection_handler(void* arg /*client_desc*/){
             if( byte_ric == -1 && errno == EINTR) continue;
             if (byte_ric == -1){
 
-                perror("errore lettura nel client.\n");
-                exit(EXIT_FAILURE);
+                printf("errore");
+                //pthread_exit(NULL);
             } 
             bytes_red += byte_ric;
         }
-
-        //printf("Dal client %d ho ricevuto: %s\n",client_desc , buf_ric);
 
         //condizione per chiudere la comunicazione, per ora solo 1 messaggio
         if( !memcmp(quit_comm, buf_ric , lun_q)){
@@ -346,7 +360,6 @@ void* connection_handler(void* arg /*client_desc*/){
         //resettiamo sen
         size_t sen_len = sizeof(sen);
         memset(sen , 0 , sen_len);
-
         //switch su stati
         switch (stato){
             case menu:
@@ -361,273 +374,63 @@ void* connection_handler(void* arg /*client_desc*/){
                     memcpy(sen, comando2 , strlen(comando2)); 
                     manda_mess(client_desc , sen);
                     stato = codicelim;
-                }
-                else{
+                } 
+                else{ 
                     memcpy(sen, comando3 , strlen(comando3));
                     manda_mess(client_desc , sen);    
-                }
+                } 
                 break;
         
 
             case tratte:
+            
                 comm = atoi(buf_ric);
-                
-                if(comm == 1){
-                    
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_uno.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='1';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_uno.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 2){
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_due.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='2';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_due.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 3){
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_tre.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='3';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_tre.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 4){
-                   //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_quattro.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                   
-                    //printf("%s",send_str);
-                    num_tratta='4';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_quattro.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 5){
-                   //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_cinque.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='5';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_cinque.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 6){
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_sei.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='6';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_sei.txt";
-                    stato = postidisp;
-                }       
-                else if (comm == 7){
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_sette.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='7';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_sette.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 8){
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_otto.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='8';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_otto.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 9){
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_nove.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='9';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_nove.txt";
-                    stato = postidisp;
-                }
-                else if (comm == 10){
-                    //apro il file contenente dati della tratta 1
-                    if((f = fopen( "posti_dieci.txt" , "r"))==NULL){
-                        //errore
-                    }
-
-                    //calcolo lunghezza file
-                    fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET);
-
-                    //leggiamo tutto e mettiamolo su send_str
-                    char *send_str = malloc(fsize + 1);
-                    fread(send_str , fsize , 1 , f);
-                    fclose(f);
-                    
-                    send_str[fsize] = 0;
-                    
-                    //printf("%s",send_str);
-                    num_tratta='A';
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    open_file = "posti_dieci.txt";
-                    stato = postidisp;
-                }        
-                else if (comm == 11){
+                int x;
+                x=comm;
+                if (comm == 11){ 
                     memcpy(sen, comando4 , strlen(comando4));
                     manda_mess(client_desc , sen);
                     stato = menu;
-                }
+                }   
+                else if(comm >0 && comm<11){
+                    open_sem=comm;
+                    if(comm==10){ 
+                        char temp[]="A";
+                        strcpy(num_tratta_str , temp); 
+                    }
+                    else{
+                        sprintf(num_tratta_str ,"%d" , comm );
+                    }
+                    num_tratta=num_tratta_str[0];
+                    char* file_da_aprire=calloc(1,20*sizeof(char));
+                    strcpy(file_da_aprire , file1);
+                    strcat(file_da_aprire , num_tratta_str);
+                    strcat(file_da_aprire , file2);
+
+                    if(sem_wait(&semafori[x-1])==-1){      //WAIT
+                        //errore
+                    }
+
+                    char* send_str = get_posti_tratta(file_da_aprire);
+
+                    if(sem_post(&semafori[x-1])==-1){       //POST
+                        //errore
+                    }
+
+                    strcpy(open_file , file_da_aprire);
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    stato = postidisp;
+                }   
+                /*
+                else if (comm == 10){
+                    char* send_str = get_posti_tratta("posti_dieci.txt");
+                    num_tratta='A';
+                    open_file = "posti_dieci.txt";
+                    memcpy(sen , send_str , strlen(send_str));
+                    manda_mess(client_desc , sen);
+                    stato = postidisp;
+                }*/  
                 else{
                     memcpy(sen, comando3 , strlen(comando3));
                     manda_mess(client_desc , sen);    
@@ -636,22 +439,28 @@ void* connection_handler(void* arg /*client_desc*/){
 
 
             case postidisp:
-                
-                if( !memcmp( comandoq , buf_ric , sizeof(comandoq)) ){
+                int quit = !memcmp( comandoq , buf_ric , sizeof(comandoq));
+                int verifica = verifica_formato(buf_ric);
+
+                if( quit ){
                     
                     memcpy(sen, comando1 , strlen(comando1));
                     manda_mess(client_desc , sen);
                     stato = tratte;
                 }
-                else if(1==1){  //capire che condizione mettere (probabilmente controlla prima l'input e usa quello)
+                else if(verifica){ 
+
+                    if(sem_wait(&semafori[open_sem-1])==-1){          //WAIT
+                        //errore
+                    }
 
                      if((f = fopen( open_file , "r+"))==NULL){
                         //errore
                     }
                     //calcolo lunghezza file
                     fseek(f , 0 , SEEK_END);
-                    long fsize = ftell(f);
-                    fseek(f,0,SEEK_SET); 
+                    long fsize = ftell(f); 
+                    fseek(f,0,SEEK_SET);   
 
                     //leggiamo tutto e mettiamolo su mod_str
                     char *mod_str = malloc(fsize + 1);
@@ -670,16 +479,31 @@ void* connection_handler(void* arg /*client_desc*/){
                         //generiamo codice prenotazione
                         int i=0;
                         char snum_prenotazione[10];
+                        char send_prenotazione[8];
+
+                        if(sem_wait(&sem_num_prenotazione)==-1){       //WAIT
+                            //errore
+                        }
+
                         aum_cod_pren(num_tratta);
                         num_prenotazione = get_num_prenotazione(num_tratta);
+
+                        if(sem_post(&sem_num_prenotazione)==-1){       //POST
+                            //errore
+                        }
+
+
                         char codice_prenotazione[100];
+                        send_prenotazione[i]=num_tratta;
                         codice_prenotazione[i]=num_tratta;
                         i++;
                         sprintf(snum_prenotazione ,"%d" , num_prenotazione );
                         for (int j=0 ; j<strlen(snum_prenotazione) ; j++ ){
                             codice_prenotazione[i] = snum_prenotazione[j];
+                            send_prenotazione[i] = snum_prenotazione[j];
                             i++;
                         }
+                        send_prenotazione[i]='\0';
                         codice_prenotazione[i]=':';
                         i++;
                         for ( int j=0 ; j < strlen(buf_ric) ; j++ ){
@@ -687,13 +511,20 @@ void* connection_handler(void* arg /*client_desc*/){
                             i++;
                         }
                         codice_prenotazione[i]='\0';
-                        printf("codice prenotazione generato: %s\n",codice_prenotazione);
-                        
+                        //printf("codice prenotazione generato: %s\n",codice_prenotazione);
+
+                        if(sem_wait(&sem_cod_prenotazione)==-1){       //WAIT
+                            //errore
+                        }
+
                         //scriviamo codice prenotazione sul file 
                         g=fopen( "codici_prenotazione.txt" , "r+");
                         fseek(g ,  0, SEEK_END);
                         fprintf(g , "%s\n" , codice_prenotazione);
                         fclose(g);
+                        if(sem_post(&sem_cod_prenotazione)==-1){     //POST
+                            //errore
+                        }
 
                         //tokenizziamo il buf_ric per prenotaare tutti i posti 
                         const char splitter[] = ",";
@@ -714,18 +545,26 @@ void* connection_handler(void* arg /*client_desc*/){
                         //scriviamo su file 
                         fseek(f , 0 , SEEK_SET);
                         fprintf(f , "%s" ,mod_str);
-                        strcat(comando5,codice_prenotazione);
+                        char* comando5 = calloc(150,sizeof(char));
+                        memcpy(comando5 , comando5uno , strlen(comando5uno));
+                        strcat(comando5,send_prenotazione);
                         strcat(comando5,comando5bis);
                         memcpy(sen, comando5 , strlen(comando5));
+                        //resettiamo comando5
                         manda_mess(client_desc , sen);
+                        free(comando5);
                         stato = codiceprenot;
                     }
                     fclose(f);
+
+                    if(sem_post(&semafori[open_sem-1])==-1){        //POST
+                        //errore
+                    }
                 
                 }
                 else{
                     memcpy(sen, comando3 , strlen(comando3));
-                    manda_mess(client_desc , sen);    
+                    manda_mess(client_desc , sen);     
                 }
                 break;
 
@@ -736,62 +575,70 @@ void* connection_handler(void* arg /*client_desc*/){
                     stato = menu;
                 }
                 else{
-                    memcpy(sen, comando5 , strlen(comando5));
+                    memcpy(sen, comando3 , strlen(comando3));
                     manda_mess(client_desc , sen);    
                 }
                 break;
 
             case codicelim:
-                
+
+                //verifichiamo che l'input è nella forma che vogliamo
                 if(!memcmp( comandoq , buf_ric , sizeof(comandoq))){
                     memcpy(sen, comando4 , strlen(comando4));
                     manda_mess(client_desc , sen);
                     stato = menu;
                 } 
-                else if(1==1){//dobbiamo verificare se l'input è nella forma che vogliamo
+                else{
                     int trovato = 0;
-                    char letto[40];
+                    char letto[50];
                     char nuovo[10000]="";
-                    char prova[20]="\n"; 
+                    char send_codice[50];
                     int pro=1;
-                    strcat(buf_ric , prova);
+
                     //apriamo il file e cerchiamolo
+                    if(sem_wait(&sem_cod_prenotazione)==-1){      //WAIT
+                            //errore
+                    }
                     FILE* p;
                     p=fopen( "codici_prenotazione.txt" , "r+");
-                    //printf("codice da cercare: %s\n",buf_ric);
 
                     while(fgets(letto, 40, p)){
                         pro=1;
-                        //printf("codice analizzato: %s\n",letto);
                     
-                        int lunghezza_max = MAX( strlen(buf_ric) , strlen(letto) );
-                        for (int i = 0 ; i < lunghezza_max-1 ; i++){
+                        int lunghezza =  strlen(buf_ric);
+                        for (int i = 0 ; i < lunghezza ; i++){
                             if(buf_ric[i]!=letto[i]){
                                 pro=0;
                             }
-                            //printf("comparato b: %c , l: %c \n",buf_ric[i],letto[i]);
                         }
-                        
                         if(!pro){
                             strcat(nuovo , letto);
                         }
                         else{
+                            memcpy(send_codice , letto , strlen(letto));
                             trovato=1;
+                            break;
                         }
                     }
                     fclose(p);
-                    
+                    if(sem_post(&sem_cod_prenotazione)==-1){      //POST
+                            //errore
+                    }
                     if(trovato){
+                        if(sem_wait(&sem_cod_prenotazione)==-1){      //WAIT
+                            //errore
+                        }
+
                         p=fopen( "codici_prenotazione.txt" , "w+");
                         fseek(p , 0 , SEEK_SET);
                         fprintf(p , "%s" , nuovo);
                         fclose(p);
 
-                        //da un problema nell'inviare la stringa al client
-                        eliminaprenotati(buf_ric);
+                        if(sem_post(&sem_cod_prenotazione)==-1){      //POST
+                            //errore
+                        }
 
-                        //comando7 stranamente è cambiato anche se non viene usato da nessuna altra parte
-                        printf("stringa da mandare: %s",comando7);
+                        eliminaprenotati(send_codice);
 
                         memcpy(sen, comando7 , strlen(comando7));
                         manda_mess(client_desc , sen);    
@@ -802,10 +649,6 @@ void* connection_handler(void* arg /*client_desc*/){
                         manda_mess(client_desc , sen);   
                     }
                     
-                }
-                else{
-                    memcpy(sen, comando3 , strlen(comando3));
-                    manda_mess(client_desc , sen);   
                 }
                 break;
 
@@ -828,11 +671,27 @@ void* connection_handler(void* arg /*client_desc*/){
     
 }
 
-
+//main function
 int main(int argc, char* argv[]){
 
     //variabile per controllare eventuali errori
     int ret;
+
+    //inizializziamo i semafori
+    for(int i = 0 ; i < NUMERO_TRATTE ; i++) {
+        ret = sem_init(&semafori[i], 0, 1);
+
+        if(ret) //errore;
+        {
+        }
+    }
+    ret = sem_init(&sem_cod_prenotazione, 0, 1);
+    if(ret){
+    }
+
+    ret = sem_init(&sem_num_prenotazione, 0, 1);
+    if(ret){
+    }
 
     //definiamo i descrittori, le struct per indirizzi, la size della struct
     int socket_desc,client_desc;
@@ -892,8 +751,15 @@ int main(int argc, char* argv[]){
             //gestisci errore 
         }
 
-        //connection_handler(client_desc_pt);
     }
+    //chiusura semafori
+    for(int i = 0 ; i < NUMERO_TRATTE ; i++) {
+        ret = sem_close(&semafori[i]);
+        if(ret){
+        }
+    }
+    sem_close(&sem_cod_prenotazione);
+    sem_close(&sem_num_prenotazione);
 
     return 0;
 }
