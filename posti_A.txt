@@ -4,7 +4,7 @@ Altrimenti invia q per tornare indietro
 Tratta: BCN -> VIE
 
 ABC DEF 
-x** *** 1
+*** *** 1
 *** *** 2
 *** *** 3
 *** *** 4

@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 700
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "common.h"  //mio file per avere informazioni in comune
@@ -8,12 +9,16 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <errno.h>
+#include <signal.h>
+#include <unistd.h>
 
 //variabili globali
 #define NUMERO_TRATTE 10 //numero di tratte, serve anche per semafori
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 sem_t semafori[NUMERO_TRATTE];
 sem_t sem_cod_prenotazione, sem_num_prenotazione;
+int public_desc;
+
 
 //stringhe da inviare al client
 const char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) AMS -> BER\n6) BER -> AMS\n7) LHR -> ZRH\n8) ZRH -> LHR\n9) VIE -> BCN\n10) BCN -> VIE\n11) torna indietro\nInvia il numero della tratta interessata o 11 per tornare indietro";
@@ -22,7 +27,7 @@ const char comando3[] = "input errato, riprova per favore";
 const char comando4[] = "Premi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
 const char comando5uno[] = "Prenotazione effettuata!\nIl tuo codice prenotazione è: ";
 const char comando5bis[] = "\nPremi 1 per tornare indietro";
-const char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi";
+const char comando6[] = "Uno di queti posti è occupato, per favore seleziona posti liberi\nla mappa dei posti aggiornata è la precedente";
 const char comando7[] = "Prenotazione cancellata!\nPremi 1 per tornare al menù principale";
 const char comando8[] = "Codice prenotazione non trovato!\nRiprova oppure premi q per tornare indietro.";
 const char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla lista delle tratte\nPremi 2 per cancellare una prenotazione\nEsci: premi quit per uscire";
@@ -40,7 +45,7 @@ int get_num_prenotazione(char num);
 void aum_cod_pren(char num);
 void eliminaprenotati(char prenotazione[]);
 char* get_posti_tratta(char file_name[]);
-
+void termination_handler (int signum);
 
 //enum per distinguere in che stato del menu ci troviamo
 enum stati_menu { menu , tratte , postidisp , codicelim , codiceprenot , codiceliminato};
@@ -72,7 +77,7 @@ char* get_posti_tratta(char file_name[]){
     FILE* f;
     //apro il file contenente dati della tratta 
     if((f = fopen( file_name , "r"))==NULL){
-        //errore
+        handle_error("errore open files");
     }
 
     //calcolo lunghezza file
@@ -115,10 +120,10 @@ void eliminaprenotati(char prenotazione[]){
 
 
     if(sem_wait(&semafori[numero_sem-1])==-1){      //WAIT
-                        //errore
+        handle_error("errore sem wait");
     }
     if((h = fopen( file_da_aprire, "r+"))==NULL){
-        //errore
+        handle_error("errore fopen h");
     }
     //calcolo lunghezza file
     fseek(h , 0 , SEEK_END);
@@ -151,7 +156,7 @@ void eliminaprenotati(char prenotazione[]){
     fprintf(h , "%s" ,tomod_str);
     fclose(h);
     if(sem_post(&semafori[numero_sem-1])==-1){      //WAIT
-        //errore
+        handle_error("errore sem post");
     }
 }
 
@@ -165,7 +170,7 @@ void aum_cod_pren(char num){
     //apriamo il file e leggiamo la riga giusta
     FILE *t;
     if((t = fopen( "numeri_prenotazione.txt" , "r+"))==NULL){
-        //errore
+        handle_error("errore fopen t");
     }
     
     if(num=='A'){tratta=10;}
@@ -201,7 +206,7 @@ int get_num_prenotazione(char num){
     //apriamo il file e leggiamo la riga giusta
     FILE *f;
     if((f = fopen( "numeri_prenotazione.txt" , "r+"))==NULL){
-        //errore
+        handle_error("errore fopen f");
     }
     
     if(num=='A'){
@@ -295,6 +300,12 @@ void manda_mess(int client_desc , char mess[]){
 
 }
 
+//handler per segnale ctrl+c
+void termination_handler (int signum){
+    printf("Client %d terminato per errore\n", public_desc);
+    pthread_exit(NULL);
+}
+
 //funzione che gestisce connessione/invio
 void* connection_handler(void* arg /*client_desc*/){
     char* open_file=calloc(20,sizeof(char));
@@ -305,9 +316,18 @@ void* connection_handler(void* arg /*client_desc*/){
     enum stati_menu stato = menu; //stato iniziale = menu
     int* client_desc_pt = (int*)arg;
     int client_desc = *client_desc_pt;
+    public_desc=client_desc;   // prima possibile per set up handler per bene 
     char num_tratta_str[2];
     char num_tratta;
     int num_prenotazione;
+    
+
+    struct sigaction act = { 0 };             
+    act.sa_handler = termination_handler;                
+    ret = sigaction(SIGPIPE, &act, NULL);  
+    if (ret == -1) {
+        handle_error("errore sigaction term");
+    }
 
     printf("server connesso a client: %d\n",client_desc);
 
@@ -330,7 +350,6 @@ void* connection_handler(void* arg /*client_desc*/){
 
     //riceviamo e mandiamo fino a che non riceviamo comando quit
     while (1){
-
         
         int bytes_red = 0;
         char buf_ric[256]; //buffer per messaggi ricevuti
@@ -408,13 +427,13 @@ void* connection_handler(void* arg /*client_desc*/){
                     strcat(file_da_aprire , file2);
 
                     if(sem_wait(&semafori[x-1])==-1){      //WAIT
-                        //errore
+                        handle_error("errore wait");
                     }
 
                     char* send_str = get_posti_tratta(file_da_aprire);
 
                     if(sem_post(&semafori[x-1])==-1){       //POST
-                        //errore
+                        handle_error("errore sem post");
                     }
 
                     strcpy(open_file , file_da_aprire);
@@ -422,15 +441,6 @@ void* connection_handler(void* arg /*client_desc*/){
                     manda_mess(client_desc , sen);
                     stato = postidisp;
                 }   
-                /*
-                else if (comm == 10){
-                    char* send_str = get_posti_tratta("posti_dieci.txt");
-                    num_tratta='A';
-                    open_file = "posti_dieci.txt";
-                    memcpy(sen , send_str , strlen(send_str));
-                    manda_mess(client_desc , sen);
-                    stato = postidisp;
-                }*/  
                 else{
                     memcpy(sen, comando3 , strlen(comando3));
                     manda_mess(client_desc , sen);    
@@ -440,8 +450,10 @@ void* connection_handler(void* arg /*client_desc*/){
 
             case postidisp:
                 int quit = !memcmp( comandoq , buf_ric , sizeof(comandoq));
-                int verifica = verifica_formato(buf_ric);
-
+                char* temp = calloc(100,sizeof(char));
+                memcpy(temp, buf_ric ,strlen(buf_ric));
+                int verifica = verifica_formato(temp);
+                
                 if( quit ){
                     
                     memcpy(sen, comando1 , strlen(comando1));
@@ -451,11 +463,11 @@ void* connection_handler(void* arg /*client_desc*/){
                 else if(verifica){ 
 
                     if(sem_wait(&semafori[open_sem-1])==-1){          //WAIT
-                        //errore
+                        handle_error("errore sem wait");
                     }
 
                      if((f = fopen( open_file , "r+"))==NULL){
-                        //errore
+                        handle_error("errore fopen f");
                     }
                     //calcolo lunghezza file
                     fseek(f , 0 , SEEK_END);
@@ -469,9 +481,13 @@ void* connection_handler(void* arg /*client_desc*/){
                     memcpy(copia_buf , buf_ric , sizeof(buf_ric));
                     int ver = verifica_posti( copia_buf , mod_str );
                     
-                    //printf("debug: verifica: %d\n",ver);
                     if( ver==0 ){
-                        memcpy(sen, comando6 , strlen(comando6));
+
+                        char* comando6dm = calloc(800,sizeof(char));
+                        memcpy(comando6dm, mod_str, strlen(mod_str));
+                        strcat(comando6dm,comando6);
+
+                        memcpy(sen, comando6dm , strlen(comando6dm));
                         manda_mess(client_desc , sen);
                     }
                     else{
@@ -482,14 +498,14 @@ void* connection_handler(void* arg /*client_desc*/){
                         char send_prenotazione[8];
 
                         if(sem_wait(&sem_num_prenotazione)==-1){       //WAIT
-                            //errore
+                            handle_error("errore sem wait");
                         }
 
                         aum_cod_pren(num_tratta);
                         num_prenotazione = get_num_prenotazione(num_tratta);
 
                         if(sem_post(&sem_num_prenotazione)==-1){       //POST
-                            //errore
+                            handle_error("errore sem post");
                         }
 
 
@@ -514,16 +530,19 @@ void* connection_handler(void* arg /*client_desc*/){
                         //printf("codice prenotazione generato: %s\n",codice_prenotazione);
 
                         if(sem_wait(&sem_cod_prenotazione)==-1){       //WAIT
-                            //errore
+                            handle_error("errore sem wait");
                         }
 
                         //scriviamo codice prenotazione sul file 
                         g=fopen( "codici_prenotazione.txt" , "r+");
+                        if( g== NULL){
+                            handle_error("errore fopen g");
+                        }
                         fseek(g ,  0, SEEK_END);
                         fprintf(g , "%s\n" , codice_prenotazione);
                         fclose(g);
                         if(sem_post(&sem_cod_prenotazione)==-1){     //POST
-                            //errore
+                            handle_error("errore sem post");
                         }
 
                         //tokenizziamo il buf_ric per prenotaare tutti i posti 
@@ -558,7 +577,7 @@ void* connection_handler(void* arg /*client_desc*/){
                     fclose(f);
 
                     if(sem_post(&semafori[open_sem-1])==-1){        //POST
-                        //errore
+                        handle_error("errore sem post");
                     }
                 
                 }
@@ -593,40 +612,44 @@ void* connection_handler(void* arg /*client_desc*/){
                     char letto[50];
                     char nuovo[10000]="";
                     char send_codice[50];
-                    int pro=1;
+                    int equal=1;
 
                     //apriamo il file e cerchiamolo
                     if(sem_wait(&sem_cod_prenotazione)==-1){      //WAIT
-                            //errore
+                        handle_error("errore sem wait");
                     }
                     FILE* p;
                     p=fopen( "codici_prenotazione.txt" , "r+");
+                    if( p == NULL ){
+                        handle_error("errore fopen p");
+                    }
 
                     while(fgets(letto, 40, p)){
-                        pro=1;
-                    
+                        
+                        equal=1;
                         int lunghezza =  strlen(buf_ric);
+                        
                         for (int i = 0 ; i < lunghezza ; i++){
                             if(buf_ric[i]!=letto[i]){
-                                pro=0;
+                                equal=0;
                             }
                         }
-                        if(!pro){
+                        if(!equal){
                             strcat(nuovo , letto);
                         }
                         else{
                             memcpy(send_codice , letto , strlen(letto));
                             trovato=1;
-                            break;
                         }
                     }
                     fclose(p);
+
                     if(sem_post(&sem_cod_prenotazione)==-1){      //POST
-                            //errore
+                            handle_error("errore sem post");
                     }
                     if(trovato){
                         if(sem_wait(&sem_cod_prenotazione)==-1){      //WAIT
-                            //errore
+                            handle_error("errore sem wait");
                         }
 
                         p=fopen( "codici_prenotazione.txt" , "w+");
@@ -635,7 +658,7 @@ void* connection_handler(void* arg /*client_desc*/){
                         fclose(p);
 
                         if(sem_post(&sem_cod_prenotazione)==-1){      //POST
-                            //errore
+                            handle_error("errore sem post");
                         }
 
                         eliminaprenotati(send_codice);
@@ -668,7 +691,7 @@ void* connection_handler(void* arg /*client_desc*/){
                 break;
         }
     }
-    
+    pthread_exit(NULL);
 }
 
 //main function
@@ -681,16 +704,18 @@ int main(int argc, char* argv[]){
     for(int i = 0 ; i < NUMERO_TRATTE ; i++) {
         ret = sem_init(&semafori[i], 0, 1);
 
-        if(ret) //errore;
-        {
+        if(ret){
+            handle_error("errore sem init");
         }
     }
     ret = sem_init(&sem_cod_prenotazione, 0, 1);
     if(ret){
+        handle_error("errore sem init");
     }
 
     ret = sem_init(&sem_num_prenotazione, 0, 1);
     if(ret){
+        handle_error("errore sem init");
     }
 
     //definiamo i descrittori, le struct per indirizzi, la size della struct
@@ -702,7 +727,7 @@ int main(int argc, char* argv[]){
 
     socket_desc = socket(AF_INET , SOCK_STREAM , 0);
     if (socket_desc<0){
-        //error management 
+        handle_error("errore inizializzazzione socket");
     }
 
     server_addr.sin_addr.s_addr = INADDR_ANY; //per ricevere connessioni da qualunque interfaccia
@@ -712,17 +737,16 @@ int main(int argc, char* argv[]){
     //colleghiamo socket ad address
     ret = bind( socket_desc ,  (struct sockaddr*) &server_addr , sockaddr_len); 
     if(ret < 0){
-        //error management
+        handle_error("errore bind");
     }
 
     //iniziamo ad "ascoltare"
     ret = listen( socket_desc , CONNESSIONI_MAX);
     if( ret < 0 ){
-        //handle error
+        handle_error("errore listen");
     }
 
     while(1){ //cambia questa parte per multi thread
-        
 
         //setup per i thread 
         pthread_t thread;
@@ -733,33 +757,39 @@ int main(int argc, char* argv[]){
         //accettiamo connessioni
         client_desc = accept(socket_desc , (struct sockaddr*) &client_addr , (socklen_t*)&sockaddr_len );
         if (client_desc < 0){
-            //handle error
+            handle_error("errore accept");
         }
 
         //per passarlo a pthread_create
         int* client_desc_pt = calloc( 1 , sizeof(int) );
         *client_desc_pt = client_desc;
 
-
         ret = pthread_create(&thread , NULL , connection_handler , client_desc_pt);
         if(ret){
-            //gestisci errore
+            handle_error("errore pthread create");
         }
 
         ret = pthread_detach(thread);
         if(ret){
-            //gestisci errore 
+            handle_error("errore pthread detach"); 
         }
-
     }
+
     //chiusura semafori
     for(int i = 0 ; i < NUMERO_TRATTE ; i++) {
         ret = sem_close(&semafori[i]);
         if(ret){
+            handle_error("errore sem close");
         }
     }
-    sem_close(&sem_cod_prenotazione);
-    sem_close(&sem_num_prenotazione);
+    ret = sem_close(&sem_cod_prenotazione);
+    if (ret){
+        handle_error("errore sem close");
+    }
+    ret = sem_close(&sem_num_prenotazione);
+    if(ret){
+        handle_error("errore sem close");
+    }
 
     return 0;
 }
