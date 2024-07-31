@@ -11,7 +11,40 @@
 #include <errno.h>
 #include <signal.h>
 
-int main(int argc, char* argv[]){   
+//variabili globali
+int* first_recv;
+
+//funzioni
+void* connection_handler();
+
+int main(int argc, char* argv[]){  
+    
+    first_recv=malloc(sizeof(int));
+    *first_recv=0;
+    pthread_t thread_per_connessione;
+
+    pthread_create(&thread_per_connessione , NULL , connection_handler , NULL);
+    printf("----------------------------------------------------------------------------\n\n"); 
+    printf("Connessione al client\n");
+    printf("Se in 5s la connessione non sarà effettuata terminerò il client\n\n");
+    printf("----------------------------------------------------------------------------\n\n");
+
+    sleep(5);    
+   
+    if(!*first_recv){
+        pthread_cancel(thread_per_connessione);
+        printf("Errore connessione al server, riprovare più tardi\n");
+        return 0;
+    }
+
+    pthread_join(thread_per_connessione, NULL);
+    printf("Connessione terminata.\n");
+    
+    return 0;
+}
+
+//handler per la connessione
+void* connection_handler(){
     int ret;
 
     int socket_desc; 
@@ -30,11 +63,12 @@ int main(int argc, char* argv[]){
 
     ret = connect(socket_desc , (struct sockaddr*) &server_addr , sizeof(struct sockaddr_in));
     if(ret < 0){
-        handle_error("errore connect");
+        handle_error("errore nel connettersi al server");
     }
+
     char* quit_comm = QUIT_COMM;  
     size_t lun_q = strlen(quit_comm);
-     
+    
    
     while(1){    
         
@@ -50,6 +84,7 @@ int main(int argc, char* argv[]){
         while ( (recv_bytes = recv(socket_desc, recv_buf + bytes_recv , buf_len - 1 , 0)) < 0 ) {
             bytes_recv += recv_bytes;
         }
+        *first_recv=1;
         if(strlen(recv_buf)==0){
             printf("errore server, termino il programma\n");
             break;
@@ -96,9 +131,5 @@ int main(int argc, char* argv[]){
         handle_error("errore close");
     }
 
+    pthread_exit(NULL);
 }
-
-
-
-
-

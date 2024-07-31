@@ -11,14 +11,126 @@
 #include <errno.h>
 #include <signal.h>
 #include <unistd.h>
+#include <asm-generic/socket.h>
+
+//definiamo la list item
+typedef struct Thread_list{
+    struct Thread_list* next;
+    struct Thread_list* prev;
+    pthread_t id_thread;
+}Thread_list;
+
+typedef struct ListHead{
+    Thread_list* first;
+    Thread_list* last;
+    int size;
+}ListHead;
+
+void List_init(ListHead* head){
+    head->first=NULL;
+    head->last=NULL;
+    head->size=0;
+}
+
+void list_insert(ListHead* head , Thread_list* item){
+    if(head->first==NULL){
+        head->first = item;
+        head->last = item;
+    }
+    else{
+        head->last->next = item;
+        item->prev = head->last;
+        head->last = item;
+    }
+    head->size++;
+}
+
+int item_in_list(ListHead* head, pthread_t id_to_find){
+    Thread_list* current = head->first;
+
+    if(!current){
+        return 0;
+    }
+
+    do{
+        if(current->id_thread == id_to_find)return 1;
+        current=current->next;
+    }while(!current || head->last!=current);
+
+    return 0;
+}
+
+pthread_t list_detatch(ListHead* head , Thread_list* item){
+    
+
+    if(head->first==NULL && head->last==NULL){
+        return -1;
+    }
+
+    pthread_t id;
+    Thread_list* to_free;
+
+    if(item){
+        Thread_list* prev = item->prev;
+        Thread_list* next = item->next;
+
+        if(next && prev){
+            prev->next = next;
+            next->prev = prev;
+        }
+        else if(prev && !next){
+            prev->next = NULL;
+            head->last = prev;
+        }
+        else if(!prev && next){
+            next->prev = NULL;
+            head->first=next;    
+        }
+        else{
+            head->first=NULL;
+            head->last=NULL;
+        }
+
+        item->next=NULL;
+        item->prev=NULL;
+        to_free = item;
+        id = item->id_thread;
+    }
+    else{
+        Thread_list* last = head->last;
+        Thread_list* prev = last->prev;
+        if(prev){
+            prev->next = NULL;
+            head->last = prev;
+        }
+        else{
+            head->first = NULL;
+            head->last = NULL;
+        }
+        id = last->id_thread;  
+        last->prev=NULL;
+        to_free = last;
+    }
+
+    head->size--;
+    free(to_free);
+    return id;
+}
+
+//struct da passare a connection handler
+typedef struct args{
+    int client_desc;
+    Thread_list* my_thread;
+}args;
 
 //variabili globali
 #define NUMERO_TRATTE 10 //numero di tratte, serve anche per semafori
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 sem_t semafori[NUMERO_TRATTE];
 sem_t sem_cod_prenotazione, sem_num_prenotazione;
-int public_desc;
-
+sem_t sem_list;
+pthread_t cient_list[CONNESSIONI_MAX*10];
+ListHead* head;
 
 //stringhe da inviare al client
 const char comando1[] = "1) FCO -> JFK\n2) JFK -> FCO\n3) CDG -> FCO\n4) FCO -> CDG\n5) AMS -> BER\n6) BER -> AMS\n7) LHR -> ZRH\n8) ZRH -> LHR\n9) VIE -> BCN\n10) BCN -> VIE\n11) torna indietro\nInvia il numero della tratta interessata o 11 per tornare indietro";
@@ -34,6 +146,7 @@ const char send_buf[] = "Sei connesso al server!\nPremi 1 per accedere alla list
 const char comandoq[] = "q";
 const char file1[] = "posti_";
 const char file2[] = ".txt";
+char termination_command[]="TERMINAASCOLTO";
 
 //funzioni
 int verifica_formato(char* lista_posti);
@@ -302,21 +415,22 @@ void manda_mess(int client_desc , char mess[]){
 
 //handler per segnale ctrl+c
 void termination_handler (int signum){
-    printf("Client %d terminato per errore\n", public_desc);
+    printf("Client terminato per errore termino il thread corrispondente\n");
     pthread_exit(NULL);
 }
 
 //funzione che gestisce connessione/invio
-void* connection_handler(void* arg /*client_desc*/){
+void* connection_handler(void* arg /*client_desc e item*/){
     char* open_file=calloc(20,sizeof(char));
     int open_sem;
     int ret; 
     int comm; //comandi per navigazione menu
     char sen[400]; //usato per inviare messaggi
     enum stati_menu stato = menu; //stato iniziale = menu
-    int* client_desc_pt = (int*)arg;
-    int client_desc = *client_desc_pt;
-    public_desc=client_desc;   // prima possibile per set up handler per bene 
+    args* arg_t = (args*) arg;
+    int client_desc = arg_t->client_desc;
+    Thread_list* item = arg_t->my_thread;
+    pthread_t our_thread=item->id_thread;
     char num_tratta_str[2];
     char num_tratta;
     int num_prenotazione;
@@ -691,7 +805,74 @@ void* connection_handler(void* arg /*client_desc*/){
                 break;
         }
     }
+
+    free(arg);
+
+    if(sem_wait(&sem_list)==-1){      //WAIT
+        handle_error("errore sem wait");
+    }
+    if(item_in_list(head, our_thread)){
+        list_detatch(head,item);
+    }
+    if(sem_post(&sem_list)==-1){      //WAIT
+        handle_error("errore sem post");
+    }
+
+    ret=close(client_desc);
+    if(ret){handle_error("errore close client_desc");}
     pthread_exit(NULL);
+}
+
+//funzione per thread_per_ascolto
+void* accetta_connessioni(void* socket_desc_pt){
+    int* socket_pt = (int*)socket_desc_pt;
+    int socket_desc = *socket_pt;
+    int client_desc;
+    int ret;
+    int sockaddr_len = sizeof(struct sockaddr_in); 
+    
+    while(1){ 
+
+        //setup per i thread 
+        pthread_t thread;
+
+        //allochiamo a ogni ciclo una nuova struttura 
+        struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
+
+        //accettiamo connessioni
+        client_desc = accept(socket_desc , (struct sockaddr*) &client_addr , (socklen_t*)&sockaddr_len );
+        if (client_desc < 0){
+            handle_error("errore accept");
+        }
+
+        Thread_list* item = malloc(sizeof(Thread_list));
+        item->next = NULL;
+        item->prev = NULL;
+
+        //per passarlo a pthread_create
+        int* client_desc_pt = calloc( 1 , sizeof(int) );
+        *client_desc_pt = client_desc;
+
+        args* t_arg = malloc(sizeof(args));
+        t_arg->client_desc=client_desc;
+        t_arg->my_thread=item;
+       
+
+        ret = pthread_create(&thread , NULL , connection_handler , t_arg);
+        if(ret){
+            handle_error("errore pthread create");
+        }
+
+        item->id_thread=thread;
+        if(sem_wait(&sem_list)==-1){      //WAIT
+            handle_error("errore sem wait");
+        }
+        list_insert( head, item );
+        if(sem_post(&sem_list)==-1){      //WAIT
+            handle_error("errore sem post");
+        }
+    }
+
 }
 
 //main function
@@ -700,6 +881,10 @@ int main(int argc, char* argv[]){
     //variabile per controllare eventuali errori
     int ret;
 
+    //inizializzaimo listhead
+    head=malloc(sizeof(ListHead));
+    List_init( head );
+
     //inizializziamo i semafori
     for(int i = 0 ; i < NUMERO_TRATTE ; i++) {
         ret = sem_init(&semafori[i], 0, 1);
@@ -707,6 +892,10 @@ int main(int argc, char* argv[]){
         if(ret){
             handle_error("errore sem init");
         }
+    }
+    ret = sem_init(&sem_list, 0, 1);
+    if(ret){
+        handle_error("errore sem init");
     }
     ret = sem_init(&sem_cod_prenotazione, 0, 1);
     if(ret){
@@ -730,6 +919,8 @@ int main(int argc, char* argv[]){
         handle_error("errore inizializzazzione socket");
     }
 
+    if (setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &(int){1}, sizeof(int)) < 0) handle_error("SO_REUSEADDR fallito");
+
     server_addr.sin_addr.s_addr = INADDR_ANY; //per ricevere connessioni da qualunque interfaccia
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_PORT); 
@@ -742,54 +933,73 @@ int main(int argc, char* argv[]){
 
     //iniziamo ad "ascoltare"
     ret = listen( socket_desc , CONNESSIONI_MAX);
-    if( ret < 0 ){
+    if( ret < 0 ){ 
         handle_error("errore listen");
     }
 
-    while(1){ //cambia questa parte per multi thread
+    //set up per thread che ascolta
+    pthread_t thread_per_ascolto;
+    int* socket_desc_pt = calloc( 1 , sizeof(int) );
+    *socket_desc_pt = socket_desc;
 
-        //setup per i thread 
-        pthread_t thread;
-
-        //allochiamo a ogni ciclo una nuova struttura 
-        struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
-
-        //accettiamo connessioni
-        client_desc = accept(socket_desc , (struct sockaddr*) &client_addr , (socklen_t*)&sockaddr_len );
-        if (client_desc < 0){
-            handle_error("errore accept");
-        }
-
-        //per passarlo a pthread_create
-        int* client_desc_pt = calloc( 1 , sizeof(int) );
-        *client_desc_pt = client_desc;
-
-        ret = pthread_create(&thread , NULL , connection_handler , client_desc_pt);
-        if(ret){
-            handle_error("errore pthread create");
-        }
-
-        ret = pthread_detach(thread);
-        if(ret){
-            handle_error("errore pthread detach"); 
-        }
+    ret = pthread_create(&thread_per_ascolto , NULL , accetta_connessioni , socket_desc_pt);
+    if(ret){
+        handle_error("errore pthread create");
     }
+
+    char input[20];
+    memset(input,0,strlen(input));
+
+    while(memcmp(termination_command , input , strlen(termination_command))){
+        memset(input , 0 , strlen(input));
+        scanf( "%s" , input); 
+    } 
+    
+    //terminiamo ascolto se ricevuta stringa di terminazione
+    pthread_cancel(thread_per_ascolto);
+
+    //attendiamo la terminazione di tutti i thread
+    pthread_t to_kill;
+    ret=0;
+    while( ret != -1){
+        
+        if(sem_wait(&sem_list)==-1){      //WAIT
+            handle_error("errore sem wait");
+        }
+        to_kill=list_detatch(head , NULL);
+        if(sem_post(&sem_list)==-1){      //WAIT
+            handle_error("errore sem post");
+        }
+        ret=to_kill;
+        if(ret==-1)break;
+
+        printf("joining thread %ld\n", to_kill);
+        pthread_join(to_kill,NULL);
+        printf("joined\n");
+    }
+    
+    //chiusura socket_desc
+    ret=close(socket_desc);
+    if(ret){handle_error("errore close socket_desc");}
 
     //chiusura semafori
     for(int i = 0 ; i < NUMERO_TRATTE ; i++) {
-        ret = sem_close(&semafori[i]);
-        if(ret){
-            handle_error("errore sem close");
+        ret = sem_destroy(&semafori[i]);
+        if(ret==-1){
+            handle_error("errore sem close 1");
         }
     }
-    ret = sem_close(&sem_cod_prenotazione);
-    if (ret){
-        handle_error("errore sem close");
+    ret = sem_destroy(&sem_cod_prenotazione);
+    if (ret==-1){
+        handle_error("errore sem close 2");
     }
-    ret = sem_close(&sem_num_prenotazione);
-    if(ret){
-        handle_error("errore sem close");
+    ret = sem_destroy(&sem_list);
+    if(ret==-1){
+        handle_error("errore sem close 3");
     }
-
+    ret = sem_destroy(&sem_num_prenotazione);
+    if(ret==-1){
+        handle_error("errore sem close 3");
+    }
     return 0;
 }
